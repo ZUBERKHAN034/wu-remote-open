@@ -1,0 +1,32 @@
+#!/bin/bash
+# Open a Wu remote project on the local machine via reverse SSH tunnel.
+# Usage: wu [directory]  (defaults to current directory)
+#
+# Installed on the remote server. Requires:
+#   - wu-listener running on the local Mac
+#   - RemoteForward 7682 127.0.0.1:7682 in SSH config for this host
+#
+# WU_SSH_HOST can be set to the SSH config alias for this server.
+# Set it in your shell config, e.g.: export WU_SSH_HOST="my-server"
+
+if (( $# > 1 )); then
+    echo "Usage: wu [directory]" >&2
+    exit 2
+fi
+
+dir="${1:-.}"
+dir=$(cd -- "$dir" 2>/dev/null && pwd) || { echo "wu: cannot access '$dir'" >&2; exit 1; }
+
+host="${WU_SSH_HOST:-$(hostname -f 2>/dev/null || hostname)}"
+
+response="$(printf '%s\0%s\0' "$host" "$dir" | nc -q1 127.0.0.1 7682 2>/dev/null)" || {
+    echo "wu: could not connect to local listener on port 7682" >&2
+    echo "  Make sure wu-listener is running and SSH has RemoteForward 7682" >&2
+    exit 1
+}
+
+if [[ "$response" != "OK" ]]; then
+    echo "wu: local listener rejected the request; check /tmp/wu-listener.err" >&2
+    exit 1
+fi
+echo "Opening Wu at $dir"

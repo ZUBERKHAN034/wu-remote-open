@@ -3,17 +3,22 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.zed.remote-listener</string>
+    <string>com.wu.remote-listener</string>
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>/Users/raghav/.local/bin/zed-listener</string>
+        <string>/Users/your-user/.local/bin/wu-listener</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>WU_CLI_PATH</key>
+        <string>/usr/local/bin/wu</string>
+    </dict>
     <key>StandardErrorPath</key>
-    <string>/tmp/zed-listener.err</string>
+    <string>/tmp/wu-listener.err</string>
 </dict>
 </plist>

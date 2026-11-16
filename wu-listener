@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Listener that opens Wu remote projects from SSH sessions.
+
+Runs on the local Mac. Remote machines send requests via SSH reverse
+port forwarding to open a Wu remote project at a specific directory.
+
+Protocol: NUL-separated UTF-8 host and absolute directory fields over TCP.
+"""
+
+import socket
+import subprocess
+import signal
+import sys
+import os
+from urllib.parse import quote
+
+PORT = 7682
+MAX_REQUEST_SIZE = 16384
+
+
+def handle_request(data):
+    fields = data.split(b"\0")
+    if len(fields) != 3 or fields[2] != b"":
+        raise ValueError("request must contain NUL-separated host and directory fields")
+    host, directory = (field.decode("utf-8") for field in fields[:2])
+    if not host or not directory:
+        raise ValueError("host and directory must not be empty")
+    if not directory.startswith("/"):
+        raise ValueError("directory must be an absolute path")
+
+    # Bracket IPv6 literals so Wu can parse the SSH URL as a URI authority.
+    authority_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    cli_path = os.environ.get("WU_CLI_PATH") or "/usr/local/bin/wu"
+    remote_path = quote(directory, safe="/~")
+    subprocess.Popen([cli_path, f"ssh://{authority_host}{remote_path}"])
+
+
+def receive_request(conn):
+    chunks = []
+    size = 0
+    while True:
+        chunk = conn.recv(min(4096, MAX_REQUEST_SIZE + 1 - size))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+        if size > MAX_REQUEST_SIZE:
+            raise ValueError("request is too large")
+    return b"".join(chunks)
+
+
+def main():
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", PORT))
+        sock.listen(5)
+
+        while True:
+            conn, _ = sock.accept()
+            with conn:
+                conn.settimeout(5)
+                try:
+                    handle_request(receive_request(conn))
+                    conn.sendall(b"OK\n")
+                except (OSError, UnicodeDecodeError, ValueError, subprocess.SubprocessError) as error:
+                    print(f"wu-listener: {error}", file=sys.stderr, flush=True)
+                    try:
+                        conn.sendall(b"ERROR\n")
+                    except OSError:
+                        pass
+
+
+if __name__ == "__main__":
+    main()
